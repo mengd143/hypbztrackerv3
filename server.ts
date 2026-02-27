@@ -60,30 +60,42 @@ async function startServer() {
       console.log(`[Server] Fetching history for: ${itemId}`);
       
       // Try Coflnet Bazaar History
-      const response = await axios.get(`https://sky.coflnet.com/api/bazaar/${itemId}/history`, {
-        timeout: 8000
-      });
-      
-      if (Array.isArray(response.data) && response.data.length > 0) {
-        console.log(`[Server] Success: Found ${response.data.length} records for ${itemId}`);
-        return res.json(response.data);
+      try {
+        const response = await axios.get(`https://sky.coflnet.com/api/bazaar/${itemId}/history`, {
+          timeout: 8000,
+          validateStatus: (status) => status < 500 // Don't throw on 404
+        });
+        
+        if (response.status === 200 && Array.isArray(response.data) && response.data.length > 0) {
+          console.log(`[Server] Success (Bazaar API): Found ${response.data.length} records for ${itemId}`);
+          return res.json(response.data);
+        }
+      } catch (e: any) {
+        console.warn(`[Server] Bazaar API failed for ${itemId}: ${e.message}`);
       }
 
-      console.warn(`[Server] Coflnet returned empty or invalid for ${itemId}, trying fallback...`);
+      console.warn(`[Server] Trying fallback Item API for ${itemId}...`);
       
-      // Fallback: Try a different Coflnet endpoint if the first one is empty
-      const fallbackResponse = await axios.get(`https://sky.coflnet.com/api/item/${itemId}/history`, {
-        timeout: 8000
-      });
+      // Fallback: Try a different Coflnet endpoint
+      try {
+        const fallbackResponse = await axios.get(`https://sky.coflnet.com/api/item/${itemId}/history`, {
+          timeout: 8000,
+          validateStatus: (status) => status < 500
+        });
 
-      if (Array.isArray(fallbackResponse.data)) {
-        return res.json(fallbackResponse.data);
+        if (fallbackResponse.status === 200 && Array.isArray(fallbackResponse.data)) {
+          console.log(`[Server] Success (Item API): Found ${fallbackResponse.data.length} records for ${itemId}`);
+          return res.json(fallbackResponse.data);
+        }
+      } catch (e: any) {
+        console.warn(`[Server] Item API failed for ${itemId}: ${e.message}`);
       }
       
+      // If both fail or return 404, return empty array instead of error
       res.json([]);
     } catch (error: any) {
-      console.error(`[Server] History fetch error for ${itemId}:`, error.message);
-      res.status(500).json({ error: "Failed to fetch historical data", details: error.message });
+      console.error(`[Server] Critical history fetch error for ${itemId}:`, error.message);
+      res.json([]); // Always return array to prevent frontend crash
     }
   });
 
